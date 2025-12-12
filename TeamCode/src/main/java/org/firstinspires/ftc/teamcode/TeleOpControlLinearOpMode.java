@@ -153,13 +153,13 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
 
         blinkinLedDriver = hardwareMap.get(RevBlinkinLedDriver.class, "blinkin");
 
-        pattern = RevBlinkinLedDriver.BlinkinPattern.RAINBOW_RAINBOW_PALETTE;
+        pattern = RevBlinkinLedDriver.BlinkinPattern.BEATS_PER_MINUTE_LAVA_PALETTE;
         blinkinLedDriver.setPattern(pattern);
 
         IMU imu = hardwareMap.get(IMU.class, "imu");
 
         RevHubOrientationOnRobot orientationOnRobot = new RevHubOrientationOnRobot(
-                RevHubOrientationOnRobot.LogoFacingDirection.RIGHT,
+                RevHubOrientationOnRobot.LogoFacingDirection.BACKWARD,
                 RevHubOrientationOnRobot.UsbFacingDirection.UP
         );
 
@@ -272,10 +272,12 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
             //      the setDirection() calls above.
             // Once the correct motors move in the correct direction re-comment this code.
 
-/*            leftFrontPower  = gamepad1.x ? 1.0 : 0.0;  // X gamepad
+            /*
+            leftFrontPower  = gamepad1.x ? 1.0 : 0.0;  // X gamepad
             leftBackPower   = gamepad1.a ? 1.0 : 0.0;  // A gamepad
             rightFrontPower = gamepad1.y ? 1.0 : 0.0;  // Y gamepad
-            rightBackPower  = gamepad1.b ? 1.0 : 0.0;  // B gamepad */
+            rightBackPower  = gamepad1.b ? 1.0 : 0.0;  // B gamepad
+            */
 
             // INTAKE CODE
             if (intakeInButton) {
@@ -341,7 +343,7 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
             } else if (lDetected && mDetected || mDetected && rDetected || lDetected && rDetected) {
                 pattern = RevBlinkinLedDriver.BlinkinPattern.YELLOW;
             } else if (lDetected || mDetected || rDetected) {
-                pattern = RevBlinkinLedDriver.BlinkinPattern.ORANGE;
+                pattern = RevBlinkinLedDriver.BlinkinPattern.BLUE;
             } else {
                 pattern = RevBlinkinLedDriver.BlinkinPattern.RED;
             }
@@ -351,6 +353,7 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
             // UPDATE TELEMETRY
             // Show the elapsed game time, wheel power, and other systems power
             telemetry.addData("Status", "Run Time: " + runtime.toString());
+            telemetry.addData("IMU Angle", "%3.4f", imu.getRobotYawPitchRollAngles().getYaw());
             telemetry.addData("Front left/Right", "%4.2f, %4.2f", leftFrontPower, rightFrontPower);
             telemetry.addData("Back  left/Right", "%4.2f, %4.2f", leftBackPower, rightBackPower);
             telemetry.addData("Intake", "%%4.2f", intake.getPower());
