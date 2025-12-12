@@ -29,10 +29,24 @@
 
 package org.firstinspires.ftc.teamcode;
 
+import android.annotation.SuppressLint;
+
+import com.qualcomm.hardware.rev.RevBlinkinLedDriver;
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DistanceSensor;
+import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.util.ElapsedTime;
+
+import org.firstinspires.ftc.robotcontroller.external.samples.SampleRevBlinkinLedDriver;
+import org.firstinspires.ftc.robotcore.external.Telemetry;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.internal.system.Deadline;
+
+import java.util.concurrent.TimeUnit;
 
 /*
  * This file contains an example of a Linear "OpMode".
@@ -82,6 +96,8 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
     private DcMotor catapult1 = null;
     private DcMotor catapult2 = null;
     private DcMotor foot = null;
+    
+    private DistanceSensor distanceL, distanceM, distanceR = null;
 
     // motor power 1 = 100% and 0.5 = 50%
     // negative values = reverse ex: -0.5 = reverse 50%
@@ -104,10 +120,15 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
 
     private enum FootMode {UP, DOWN, BRAKE}
     private FootMode footmode;
+    
+    RevBlinkinLedDriver blinkinLedDriver;
+    RevBlinkinLedDriver.BlinkinPattern pattern;
+
 
     /*
      * Code to run ONCE when the driver hits INIT (same as previous year's init())
      */
+    @SuppressLint("DefaultLocale")
     @Override
     public void runOpMode() {
         telemetry.addData("Status", "Initialized");
@@ -116,15 +137,33 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
         // to the names assigned during the robot configuration
         // step (using the FTC Robot Controller app on the phone).
 
-        leftFrontDrive = hardwareMap.get(DcMotor.class, "left_front_drive");
-        leftBackDrive = hardwareMap.get(DcMotor.class, "left_back_drive");
-        rightFrontDrive = hardwareMap.get(DcMotor.class, "right_front_drive");
-        rightBackDrive = hardwareMap.get(DcMotor.class, "right_back_drive");
+        leftFrontDrive = hardwareMap.get(DcMotor.class, "lf");
+        leftBackDrive = hardwareMap.get(DcMotor.class, "lb");
+        rightFrontDrive = hardwareMap.get(DcMotor.class, "rf");
+        rightBackDrive = hardwareMap.get(DcMotor.class, "rb");
 
         intake = hardwareMap.get(DcMotor.class, "intake");
         catapult1 = hardwareMap.get(DcMotor.class, "catapult1");
         catapult2 = hardwareMap.get(DcMotor.class, "catapult2");
         foot = hardwareMap.get(DcMotor.class, "foot");
+        
+        distanceL = hardwareMap.get(DistanceSensor.class, "distanceL");
+        distanceM = hardwareMap.get(DistanceSensor.class, "distanceM");
+        distanceR = hardwareMap.get(DistanceSensor.class, "distanceR");
+
+        blinkinLedDriver = hardwareMap.get(RevBlinkinLedDriver.class, "blinkin");
+
+        pattern = RevBlinkinLedDriver.BlinkinPattern.RAINBOW_RAINBOW_PALETTE;
+        blinkinLedDriver.setPattern(pattern);
+
+        IMU imu = hardwareMap.get(IMU.class, "imu");
+
+        RevHubOrientationOnRobot orientationOnRobot = new RevHubOrientationOnRobot(
+                RevHubOrientationOnRobot.LogoFacingDirection.RIGHT,
+                RevHubOrientationOnRobot.UsbFacingDirection.UP
+        );
+
+        imu.initialize(new IMU.Parameters(orientationOnRobot));
 
         // ########################################################################################
         // !!!            IMPORTANT Drive Information. Test your motor directions.            !!!!!
@@ -140,9 +179,9 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
 
         // set direction of wheel motors
         leftFrontDrive.setDirection(DcMotor.Direction.FORWARD);
-        leftBackDrive.setDirection(DcMotor.Direction.REVERSE);
+        leftBackDrive.setDirection(DcMotor.Direction.FORWARD);
         rightFrontDrive.setDirection(DcMotor.Direction.REVERSE);
-        rightBackDrive.setDirection(DcMotor.Direction.FORWARD);
+        rightBackDrive.setDirection(DcMotor.Direction.REVERSE);
 
         // set direction of subsystem motors
         intake.setDirection(DcMotor.Direction.FORWARD); // Forward should INTAKE.
@@ -158,6 +197,7 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
 
         // Wait for the game to start (driver presses START)
         telemetry.addData("Status", "Initialized");
+        telemetry.addData("Pattern: ", pattern.toString());
         telemetry.update();
 
         waitForStart();
@@ -175,8 +215,8 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
             // POV Mode uses left joystick to go forward & strafe, and right joystick to rotate.
             //axial = speed, lateral = turn, yaw = strafe
             double axial = -gamepad1.left_stick_y;  // Note: pushing stick forward gives negative value
-            double lateral = -gamepad1.right_stick_x;
-            double yaw = -gamepad1.left_stick_x;
+            double lateral = gamepad1.left_stick_x;
+            double yaw = gamepad1.right_stick_x;
 
             boolean intakeInButton = gamepad1.left_trigger > 0.2;
             boolean intakeOutButton = gamepad1.left_bumper;
@@ -201,23 +241,27 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
             // DRIVE CODE
             // Combine the joystick requests for each axis-motion to determine each wheel's power.
             // Set up a variable for each drive wheel to save the power level for telemetry.
-            leftFrontPower = axial + lateral + yaw;
-            rightFrontPower = axial - lateral - yaw;
-            leftBackPower = axial - lateral + yaw;
-            rightBackPower = axial + lateral - yaw;
+            if (gamepad1.options) {
+                imu.resetYaw();
+            }
+
+            //Code taken from
+            //https://gm0.org/en/latest/docs/software/tutorials/mecanum-drive.html#field-centric-final-sample-code
+            double botHeading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+            double rotLateral = lateral * Math.cos(-botHeading) - axial * Math.sin(-botHeading);
+            double rotAxial = lateral * Math.sin(-botHeading) + axial * Math.cos(-botHeading);
+            rotLateral *= 1.1;  // Counteract imperfect strafing
 
             // Normalize the values so no wheel power exceeds 100%
-            // This ensures that the robot maintains the desired motion.
-            max = Math.max(Math.abs(leftFrontPower), Math.abs(rightFrontPower));
-            max = Math.max(max, Math.abs(leftBackPower));
-            max = Math.max(max, Math.abs(rightBackPower));
+            // This ensures that the robot maintains the desired motion
+            double denominator = Math.max(Math.abs(rotAxial) + Math.abs(rotLateral) + Math.abs(yaw), 1);
 
-            if (max > 1.0) {
-                leftFrontPower /= max;
-                rightFrontPower /= max;
-                leftBackPower /= max;
-                rightBackPower /= max;
-            }
+            leftFrontPower = (rotAxial + rotLateral + yaw) / denominator;
+            leftBackPower = (rotAxial - rotLateral + yaw) / denominator;
+            rightFrontPower = (rotAxial - rotLateral - yaw) / denominator;
+            rightBackPower = (rotAxial + rotLateral - yaw) / denominator;
+
+
 
             // This is wheel test code
             // Uncomment the following code to test your motor directions.
@@ -288,6 +332,22 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
                 catapult_mode_str = "HOLD";
             }
 
+            boolean lDetected = distanceL.getDistance(DistanceUnit.INCH) < 2.5;
+            boolean mDetected = distanceM.getDistance(DistanceUnit.INCH) < 2.5;
+            boolean rDetected = distanceR.getDistance(DistanceUnit.INCH) < 2.5;
+
+            if (lDetected && mDetected && rDetected) {
+                pattern = RevBlinkinLedDriver.BlinkinPattern.GREEN;
+            } else if (lDetected && mDetected || mDetected && rDetected || lDetected && rDetected) {
+                pattern = RevBlinkinLedDriver.BlinkinPattern.YELLOW;
+            } else if (lDetected || mDetected || rDetected) {
+                pattern = RevBlinkinLedDriver.BlinkinPattern.ORANGE;
+            } else {
+                pattern = RevBlinkinLedDriver.BlinkinPattern.RED;
+            }
+
+            blinkinLedDriver.setPattern(pattern);
+
             // UPDATE TELEMETRY
             // Show the elapsed game time, wheel power, and other systems power
             telemetry.addData("Status", "Run Time: " + runtime.toString());
@@ -301,6 +361,10 @@ public class TeleOpControlLinearOpMode extends LinearOpMode {
             telemetry.addData("Catapult2 Current/Target/power", "%d, %d, %4.2f",
                     catapult2.getCurrentPosition(), catapult2.getTargetPosition(), catapult2.getPower());
             telemetry.addData("Catapult MODE", "%s", catapult_mode_str);
+            telemetry.addData("L Range", String.format("%.01f in", distanceL.getDistance(DistanceUnit.INCH)));
+            telemetry.addData("M Range", String.format("%.01f in", distanceM.getDistance(DistanceUnit.INCH)));
+            telemetry.addData("R Range", String.format("%.01f in", distanceR.getDistance(DistanceUnit.INCH)));
+            telemetry.addData("Pattern: ", pattern.toString());
             telemetry.update();
         }
     }
